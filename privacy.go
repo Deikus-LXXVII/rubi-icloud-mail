@@ -8,29 +8,43 @@ import (
 )
 
 // Privacy filter. Some mail should never reach the agent: sign-in codes, one-time passwords, password
-// resets, and whatever else the user adds. Hidden mail shows up only as "a private email from <sender>";
+// resets, optionally sign-in alerts, and whatever else the user adds. Hidden mail shows up only as "a private email from <sender>";
 // the agent can ask to see one, and the user approves with Face ID or their password (icloud_mail_reveal).
 //
 // The settings are user-only (manifest config): the user changes them in the Rubi panel with approval,
 // and the agent has no way to change them.
 
 type privacyConfig struct {
-	HideCodes bool     `json:"hide_codes"`
-	Senders   []string `json:"hidden_senders"`
-	Keywords  []string `json:"hidden_keywords"`
+	HideCodes  bool     `json:"hide_codes"`
+	HideResets bool     `json:"hide_password_resets"`
+	HideAlerts bool     `json:"hide_sign_in_alerts"`
+	Senders    []string `json:"hidden_senders"`
+	Keywords   []string `json:"hidden_keywords"`
 }
 
-// builtInPhrases catch sign-in and password mail in English and Russian (matched in lower case).
-var builtInPhrases = []string{
-	"verification code", "security code", "confirmation code", "login code", "log-in code", "sign-in code",
-	"sign in code", "authentication code", "access code", "one-time code", "one-time password",
-	"one time password", "one-time passcode", "passcode", "otp", "2fa", "two-factor", "two-step",
-	"password reset", "reset your password", "reset password", "change your password", "magic link",
-	"sign in to your account", "new sign-in", "new login", "verify your email", "verify your identity",
-	"код подтверждения", "код для входа", "код входа", "проверочный код", "одноразовый код",
-	"одноразовый пароль", "код доступа", "код авторизации", "сброс пароля", "восстановление пароля",
-	"смена пароля", "изменение пароля", "подтверждение входа", "вход в аккаунт", "новый вход",
-}
+// Built-in phrases by category, matched in lower case. Each category has its own switch, so the user can,
+// for example, hide codes but let the agent see sign-in alerts and warn them about suspicious activity.
+var (
+	codePhrases = []string{
+		"verification code", "security code", "confirmation code", "login code", "log-in code", "sign-in code",
+		"sign in code", "authentication code", "access code", "one-time code", "one-time password",
+		"one time password", "one-time passcode", "passcode", "otp", "2fa", "two-factor", "two-step",
+		"magic link", "verify your email", "confirm your email", "verify your identity",
+		"код подтверждения", "код для входа", "код входа", "проверочный код", "одноразовый код",
+		"одноразовый пароль", "код доступа", "код авторизации", "подтверждение входа", "подтвердите адрес",
+		"подтвердите почту",
+	}
+	resetPhrases = []string{
+		"password reset", "reset your password", "reset password", "change your password", "password change",
+		"сброс пароля", "восстановление пароля", "смена пароля", "изменение пароля", "сбросить пароль",
+	}
+	alertPhrases = []string{
+		"new sign-in", "new sign in", "new login", "new device", "sign in to your account", "suspicious",
+		"unusual activity", "unusual sign-in", "security alert", "was your account accessed",
+		"новый вход", "вход в аккаунт", "новое устройство", "подозрительн", "необычная активность",
+		"оповещение безопасности",
+	}
+)
 
 var (
 	codeWord   = regexp.MustCompile(`(?i)(^|[^\p{L}])(code|codes|pin|код|кода|пин)([^\p{L}]|$)`)
@@ -59,17 +73,30 @@ func (p privacyConfig) hidden(from, subject, body string) (bool, string) {
 		}
 	}
 	if p.HideCodes {
-		for _, k := range builtInPhrases {
-			if containsPhrase(subj, k) || containsPhrase(bodyL, k) {
-				return true, "sign-in or password email"
-			}
+		if anyPhrase(subj, bodyL, codePhrases) {
+			return true, "sign-in code or confirmation link"
 		}
 		// "123456 is your code", "Ваш код: 4821"
 		if codeWord.MatchString(subj) && codeDigits.MatchString(subj) {
-			return true, "sign-in or password email"
+			return true, "sign-in code or confirmation link"
 		}
 	}
+	if p.HideResets && anyPhrase(subj, bodyL, resetPhrases) {
+		return true, "password reset"
+	}
+	if p.HideAlerts && anyPhrase(subj, bodyL, alertPhrases) {
+		return true, "sign-in alert"
+	}
 	return false, ""
+}
+
+func anyPhrase(subj, body string, phrases []string) bool {
+	for _, k := range phrases {
+		if containsPhrase(subj, k) || containsPhrase(body, k) {
+			return true
+		}
+	}
+	return false
 }
 
 // containsPhrase matches short tokens ("otp", "2fa") as whole words, longer phrases anywhere.
@@ -127,10 +154,10 @@ func senderOnly(from string) string {
 }
 
 func privacyOf(h host) privacyConfig {
-	p := privacyConfig{HideCodes: true}
+	p := privacyConfig{HideCodes: true, HideResets: true}
 	if err := h.Config(&p); err != nil {
-		h.Logf("privacy settings unavailable, using defaults: %v", err)
-		return privacyConfig{HideCodes: true}
+		h.Logf("privacy settings unavailable, hiding codes, resets and alerts: %v", err)
+		return privacyConfig{HideCodes: true, HideResets: true, HideAlerts: true}
 	}
 	return p
 }

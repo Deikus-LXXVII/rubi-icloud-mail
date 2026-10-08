@@ -335,7 +335,7 @@ func TestSelfAddressedTracking(t *testing.T) {
 }
 
 func TestPrivacyFilter(t *testing.T) {
-	p := privacyConfig{HideCodes: true, Senders: []string{"bank.example"}, Keywords: []string{"medical"}}
+	p := privacyConfig{HideCodes: true, HideResets: true, Senders: []string{"bank.example"}, Keywords: []string{"medical"}}
 	for _, c := range []struct {
 		from, subject, body string
 		hidden              bool
@@ -345,6 +345,9 @@ func TestPrivacyFilter(t *testing.T) {
 		{"x@shop.com", "Ваш код: 4821", "", true},
 		{"x@shop.com", "Код подтверждения", "", true},
 		{"x@shop.com", "Your 2FA settings", "", true},
+		{"x@shop.com", "Reset your password", "", true},
+		{"Google <no-reply@accounts.google.com>", "Security alert: new sign-in on Mac", "", false},
+		{"x@bank.ru", "Подозрительная активность", "", false},
 		{"Alerts <info@mail.bank.example>", "Statement", "", true},
 		{"x@clinic.com", "Results", "your medical report", true},
 		{"x@shop.com", "Use promo code SPRING", "", false},
@@ -358,6 +361,18 @@ func TestPrivacyFilter(t *testing.T) {
 	}
 	if got, _ := (privacyConfig{}).hidden("x@a.com", "Your verification code", ""); got {
 		t.Error("built-in list applied while turned off")
+	}
+	// Each category has its own switch.
+	alerts := privacyConfig{HideAlerts: true}
+	if got, _ := alerts.hidden("x@a.com", "New sign-in to your account", ""); !got {
+		t.Error("sign-in alert shown while hidden")
+	}
+	if got, _ := alerts.hidden("x@a.com", "Reset your password", ""); got {
+		t.Error("password reset hidden while its switch is off")
+	}
+	// An alert carrying a code stays hidden by the code switch.
+	if got, why := (privacyConfig{HideCodes: true}).hidden("x@a.com", "New sign-in", "Your verification code is 1234"); !got || why != "sign-in code or confirmation link" {
+		t.Errorf("alert with a code: %v %q", got, why)
 	}
 	if senderOnly(`"Your code is 1234" <noreply@x.com>`) != "noreply@x.com" {
 		t.Error("display name leaked")

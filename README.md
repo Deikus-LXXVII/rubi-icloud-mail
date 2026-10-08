@@ -42,8 +42,10 @@ You can change the approval levels in Rubi's settings, except the two marked "al
 Right after connecting, and later under *Settings* > *iCloud Mail* > *Settings* in the Rubi panel:
 
 - **Folders your agent can see:** all, or only the ones you check; and whether it may ask for the others.
-- **Hide sign-in codes and password emails:** on by default (verification codes, one-time passwords,
-  password resets, sign-in alerts; English and Russian).
+- **Hide sign-in codes, one-time passwords and confirmation links:** on by default.
+- **Hide password reset emails:** on by default.
+- **Hide sign-in and security alerts:** off by default, so your agent can warn you about new sign-ins or
+  suspicious activity. (An alert that contains a code stays hidden by the first switch.)
 - **Hidden senders** and **hidden words:** anything else you want to keep from your agent.
 
 Only you can change these, with Face ID or your password; your agent can't see or change them. Hidden mail
