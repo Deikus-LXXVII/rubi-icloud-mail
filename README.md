@@ -5,13 +5,15 @@ your approval:
 
 - read and search mail (never marks anything as read);
 - save drafts to your iCloud Drafts folder;
-- send email only after you approve it in the Rubi panel (Face ID by default);
+- send email only after you approve it in the Rubi panel (with your passkey by default);
 - optionally get notified when someone replies to an email you sent;
 - let your agent watch for new mail from given senders or with given words (say, delivery updates for an
   order) and react to each one;
 - keep private mail private: sign-in codes, password resets and anything you choose stay hidden from your
-  agent unless you approve showing one with Face ID;
-- choose which folders your agent can see, and whether it may ask for the others.
+  agent unless you approve showing one;
+- choose which folders your agent can see, and whether it may ask for the others;
+- connect several iCloud Mail accounts. Your agent picks one by its address; otherwise it uses the default
+  (the first one you connected).
 
 ## Install
 
@@ -21,6 +23,8 @@ app-specific password from [account.apple.com](https://account.apple.com/account
 Security* > *App-Specific Passwords*). Apple offers no other way for apps to reach iCloud Mail. Rubi keeps
 the password encrypted; your agent never sees it.
 
+To add another account, open *Settings* in the Rubi panel and press *Add account* at iCloud Mail.
+
 ## Permissions
 
 | | |
@@ -28,42 +32,44 @@ the password encrypted; your agent never sees it.
 | Asks for | iCloud email address, app-specific password |
 | Read and search mail | no approval by default |
 | Save drafts | no approval by default |
-| Send email | Face ID / password by default |
+| Send email | passkey / password by default |
 | Connects to | `imap.mail.me.com:993`, `smtp.mail.me.com:587` |
 | Watch for new mail (wakes your agent) | no approval by default |
-| Show a private email | Face ID / password, always |
-| Open a closed folder for a while | Face ID / password, always |
+| Show a private email | passkey / password, always |
+| Open a closed folder for a while | passkey / password, always |
 | Can notify your agent about | replies to tracked emails, mail matching its watches |
 
 You can change the approval levels in Rubi's settings, except the two marked "always".
 
 ## Your settings
 
-Right after connecting, and later under *Settings* > *iCloud Mail* > *Settings* in the Rubi panel:
+Right after connecting, and later in the Rubi panel under *Settings*, at each account of iCloud Mail:
 
-- **Folders your agent can see:** all, or only the ones you check; and whether it may ask for the others.
+- **Folders your agent can see** (for each account): all, or only the ones you check; and whether it may
+  ask for the others.
 - **Hide sign-in codes, one-time passwords and confirmation links:** on by default.
 - **Hide password reset emails:** on by default.
 - **Hide sign-in and security alerts:** off by default, so your agent can warn you about new sign-ins or
   suspicious activity. (An alert that contains a code stays hidden by the first switch.)
 - **Hidden senders** and **hidden words:** anything else you want to keep from your agent.
 
-Only you can change these, with Face ID or your password; your agent can't see or change them. Hidden mail
-shows up to your agent only as "a private email from <sender>".
+The privacy switches apply to all your iCloud Mail accounts. Only you can change these settings, with your
+passkey or password; your agent can't see or change them. Hidden mail shows up to your agent only as
+"a private email from <sender>".
 
 ## Development
 
-Built with Rubi's Go SDK (`github.com/Deikus-LXXVII/rubi/sdk/rubiplugin`).
+The mail engine lives in [rubi-mailkit](https://github.com/Deikus-LXXVII/rubi-mailkit), shared with the
+Gmail plugin; this repository only describes iCloud Mail (`main.go`). Tests are in rubi-mailkit.
 
 ```bash
-go test ./...
 go build -o icloud-mail . && ./icloud-mail --manifest
 ```
 
-To develop against a local Rubi checkout, use a workspace (not committed):
+To develop against local checkouts, use a workspace (not committed):
 
 ```bash
-go work init . ../rubi
+go work init . ../rubi-mailkit ../rubi
 ```
 
 ## Releasing
