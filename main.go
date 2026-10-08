@@ -39,7 +39,7 @@ func manifest() rubiplugin.Manifest {
 		Publisher: rubiplugin.Publisher{Name: "Rubi-Project", Key: PublisherKey,
 			URL: "https://github.com/Deikus-LXXVII/rubi-icloud-mail"},
 		Source:  "https://github.com/Deikus-LXXVII/rubi-icloud-mail",
-		MinRubi: "v0.4.0",
+		MinRubi: "v0.4.1",
 		Entry:   "icloud-mail",
 		Fields: []rubiplugin.Field{
 			{Key: "address", Label: "iCloud email address", Type: "email", Placeholder: "name@icloud.com", Required: true,
