@@ -424,7 +424,7 @@ func TestPrivateMailInSearchAndRead(t *testing.T) {
 	if last.Kind != kindPrivate {
 		t.Fatalf("reveal request: %+v", last)
 	}
-	shown, err := x.reveal(h, revealIn{UID: uid})
+	shown, err := x.reveal(h, revealIn{UID: uid}, "show")
 	if b, _ := json.Marshal(shown); err != nil || !strings.Contains(string(b), "829114") {
 		t.Fatalf("reveal: %s %v", b, err)
 	}
@@ -509,5 +509,41 @@ func TestFolderAccess(t *testing.T) {
 	_, err = x.doRead(h, readPayload{Op: "search", Search: &searchQuery{Mailbox: "Drafts"}})
 	if err == nil || strings.Contains(err.Error(), "icloud_mail_folder_access") {
 		t.Fatalf("never: %v", err)
+	}
+}
+
+func TestRevealBatch(t *testing.T) {
+	x, h, addr, _ := setup(t)
+	for i, code := range []string{"111111", "222222", "333333"} {
+		deliver(t, addr, "INBOX", fmt.Sprintf("From: Svc%d <noreply@svc%d.com>\nTo: me@icloud.com\nSubject: Your login code %s\nMessage-ID: <c%d@x>\n\ncode %s\n", i, i, code, i, code))
+	}
+	deliver(t, addr, "INBOX", "From: anna@example.com\nTo: me@icloud.com\nSubject: Lunch\nMessage-ID: <l@x>\n\nhi\n")
+	all, _ := x.doRead(h, readPayload{Op: "search", Search: &searchQuery{}})
+	var uids []uint32
+	for _, m := range all.(map[string]any)["messages"].([]summary) {
+		uids = append(uids, m.UID)
+	}
+	res, err := x.requestReveal(context.Background(), h, revealIn{UIDs: uids, Reason: "log in to three services"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := h.pending[len(h.pending)-1]
+	if len(req.Items) != 3 || res.(map[string]any)["not_private"] == nil {
+		t.Fatalf("batch request: %d items, %v", len(req.Items), res)
+	}
+	// The user ticks two of the three.
+	b, _ := json.Marshal(req.Payload)
+	var payload revealIn
+	_ = json.Unmarshal(b, &payload)
+	out, err := x.reveal(h, payload, "items:"+req.Items[0].Key+","+req.Items[2].Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := json.Marshal(out)
+	if strings.Count(string(got), `"uid"`) != 2 || !strings.Contains(string(got), "111111") || !strings.Contains(string(got), "333333") {
+		t.Fatalf("revealed: %s", got)
+	}
+	if strings.Contains(string(got), "222222") {
+		t.Fatalf("an unticked email was revealed: %s", got)
 	}
 }

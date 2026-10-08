@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -81,16 +82,16 @@ func newPlugin(x *integration) *rubiplugin.Plugin {
 
 	registerWatches(p, x)
 	registerFolders(p, x)
-	rubiplugin.AddTool(p, "icloud_mail_reveal", "Ask the user to let you see one email hidden by their privacy filter (e.g. a sign-in code they want you to use). They approve with Face ID or their password; then you get it once. Say why in reason.",
+	rubiplugin.AddTool(p, "icloud_mail_reveal", "Ask the user to let you see emails hidden by their privacy filter (e.g. a sign-in code they want you to use). Pass uid for one, or uids for several at once: the user ticks which ones to show and approves them together with their passkey or password. You get them once. Say why in reason.",
 		func(ctx context.Context, h *rubiplugin.Host, in revealIn) (any, error) {
 			return x.requestReveal(ctx, h, in)
 		})
-	p.OnExecute(kindPrivate, func(ctx context.Context, h *rubiplugin.Host, _ string, payload json.RawMessage) (any, error) {
+	p.OnExecute(kindPrivate, func(ctx context.Context, h *rubiplugin.Host, option string, payload json.RawMessage) (any, error) {
 		var in revealIn
 		if err := json.Unmarshal(payload, &in); err != nil {
 			return nil, err
 		}
-		return x.reveal(h, in)
+		return x.reveal(h, in, option)
 	})
 	p.OnExecute(kindRead, func(ctx context.Context, h *rubiplugin.Host, _ string, payload json.RawMessage) (any, error) {
 		var r readPayload
@@ -445,14 +446,34 @@ func randomID(prefix string) string {
 }
 
 type revealIn struct {
-	UID     uint32 `json:"uid"`
-	Mailbox string `json:"mailbox,omitempty" jsonschema:"folder, default INBOX"`
-	Reason  string `json:"reason" jsonschema:"why you need it, shown to the user"`
+	UID     uint32   `json:"uid,omitempty" jsonschema:"one email"`
+	UIDs    []uint32 `json:"uids,omitempty" jsonschema:"several emails from the same folder, approved together"`
+	Mailbox string   `json:"mailbox,omitempty" jsonschema:"folder, default INBOX"`
+	Reason  string   `json:"reason" jsonschema:"why you need them, shown to the user"`
+}
+
+func (in revealIn) all() []uint32 {
+	var out []uint32
+	seen := map[uint32]bool{}
+	for _, u := range append([]uint32{in.UID}, in.UIDs...) {
+		if u != 0 && !seen[u] {
+			seen[u] = true
+			out = append(out, u)
+		}
+	}
+	return out
 }
 
 func (x *integration) requestReveal(ctx context.Context, h host, in revealIn) (any, error) {
 	if strings.TrimSpace(in.Reason) == "" {
-		return nil, errors.New("say why you need this email (reason)")
+		return nil, errors.New("say why you need these emails (reason)")
+	}
+	uids := in.all()
+	if len(uids) == 0 {
+		return nil, errors.New("give uid or uids")
+	}
+	if len(uids) > 50 {
+		return nil, errors.New("at most 50 emails per request")
 	}
 	if err := x.folderAllowed(h, in.Mailbox); err != nil {
 		return nil, err
@@ -461,42 +482,89 @@ func (x *integration) requestReveal(ctx context.Context, h host, in revealIn) (a
 	if err != nil {
 		return nil, err
 	}
-	raw, err := fetchRaw(c, in.Mailbox, in.UID)
+	p := privacyOf(h)
+	var items []rubiplugin.Item
+	var notPrivate []uint32
+	for _, uid := range uids {
+		raw, err := fetchRaw(c, in.Mailbox, uid)
+		if err != nil {
+			logout(c)
+			return nil, fmt.Errorf("email %d: %w", uid, err)
+		}
+		m, err := parseMessage(raw, 20000)
+		if err != nil {
+			logout(c)
+			return nil, err
+		}
+		hidden, why := p.hidden(m.From, m.Subject, m.Text)
+		if !hidden {
+			notPrivate = append(notPrivate, uid)
+			continue
+		}
+		items = append(items, rubiplugin.Item{Key: strconv.FormatUint(uint64(uid), 10), Label: senderOnly(m.From) + ": " + m.Subject,
+			Preview: map[string]any{"from": m.From, "subject": m.Subject, "date": m.Date, "hidden_because": why}})
+	}
 	logout(c)
-	if err != nil {
-		return nil, err
+	if len(items) == 0 {
+		return map[string]any{"status": "not_private", "message": "These emails aren't hidden; read them with icloud_mail_read."}, nil
 	}
-	m, err := parseMessage(raw, 20000)
-	if err != nil {
-		return nil, err
+	reason := strings.TrimSpace(in.Reason)
+	payload := revealIn{Mailbox: in.Mailbox, Reason: reason}
+	for _, it := range items {
+		u, _ := strconv.ParseUint(it.Key, 10, 32)
+		payload.UIDs = append(payload.UIDs, uint32(u))
 	}
-	hidden, why := privacyOf(h).hidden(m.From, m.Subject, m.Text)
-	if !hidden {
-		return map[string]any{"status": "not_private", "message": "This email isn't hidden; read it with icloud_mail_read."}, nil
+	req := rubiplugin.Request{Kind: kindPrivate, Payload: payload,
+		Options: []rubiplugin.Option{{Key: "show", Label: "Show to my agent"}}}
+	if len(items) == 1 {
+		pv := items[0].Preview.(map[string]any)
+		pv["reason"] = reason
+		req.Summary, req.Preview = "Show a private email from "+items[0].Label+" to your agent", pv
+	} else {
+		req.Summary = fmt.Sprintf("Show %d private emails to your agent", len(items))
+		req.Preview = map[string]any{"reason": reason, "emails": fmt.Sprintf("%d (choose which below)", len(items))}
+		req.Items = items
 	}
-	return h.Submit(ctx, rubiplugin.Request{Kind: kindPrivate,
-		Summary: "Show a private email from " + senderOnly(m.From) + " to your agent",
-		Preview: map[string]any{"from": m.From, "subject": m.Subject, "date": m.Date, "hidden_because": why,
-			"reason": strings.TrimSpace(in.Reason)},
-		Options: []rubiplugin.Option{{Key: "show", Label: "Show it to my agent"}},
-		Payload: revealIn{UID: in.UID, Mailbox: in.Mailbox, Reason: in.Reason}})
+	res, err := h.Submit(ctx, req)
+	if err == nil && len(notPrivate) > 0 {
+		res["not_private"] = notPrivate
+		res["note"] = "Some of the emails aren't hidden; read those with icloud_mail_read."
+	}
+	return res, err
 }
 
-func (x *integration) reveal(h host, in revealIn) (any, error) {
+func (x *integration) reveal(h host, in revealIn, option string) (any, error) {
+	uids := in.all()
+	if chosen := rubiplugin.ChosenItems(option); chosen != nil { // a batch: only what the user ticked
+		uids = nil
+		for _, k := range chosen {
+			if u, err := strconv.ParseUint(k, 10, 32); err == nil {
+				uids = append(uids, uint32(u))
+			}
+		}
+	}
 	c, _, err := session(h)
 	if err != nil {
 		return nil, err
 	}
 	defer logout(c)
-	raw, err := fetchRaw(c, in.Mailbox, in.UID)
-	if err != nil {
-		return nil, err
+	var shown []*message
+	for _, uid := range uids {
+		raw, err := fetchRaw(c, in.Mailbox, uid)
+		if err != nil {
+			return nil, err
+		}
+		m, err := parseMessage(raw, 0)
+		if err != nil {
+			return nil, err
+		}
+		m.UID, m.Mailbox = uid, orInbox(in.Mailbox)
+		shown = append(shown, m)
+		h.Audit("private_revealed", map[string]any{"uid": uid, "mailbox": m.Mailbox})
 	}
-	m, err := parseMessage(raw, 0)
-	if err != nil {
-		return nil, err
+	note := "Shown once with the user's approval. Use them only for what you asked; don't repeat codes or store them."
+	if len(shown) == 1 {
+		return map[string]any{"message": shown[0], "note": note}, nil
 	}
-	m.UID, m.Mailbox = in.UID, orInbox(in.Mailbox)
-	h.Audit("private_revealed", map[string]any{"uid": in.UID, "mailbox": m.Mailbox})
-	return map[string]any{"message": m, "note": "Shown once with the user's approval. Use it only for what you asked; don't repeat codes or store them."}, nil
+	return map[string]any{"messages": shown, "note": note}, nil
 }
