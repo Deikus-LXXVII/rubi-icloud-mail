@@ -26,6 +26,8 @@ type host interface {
 	Level(kind string) rubiplugin.Level
 	Submit(ctx context.Context, r rubiplugin.Request) (map[string]any, error)
 	Emit(typ string, data map[string]any) (string, error)
+	EmitTo(agent, typ string, data map[string]any) (string, error)
+	Config(v any) error
 	Audit(event string, fields map[string]any)
 	Logf(format string, args ...any)
 }
@@ -77,6 +79,19 @@ func newPlugin(x *integration) *rubiplugin.Plugin {
 			return map[string]any{"stopped": ok}, err
 		})
 
+	registerWatches(p, x)
+	registerFolders(p, x)
+	rubiplugin.AddTool(p, "icloud_mail_reveal", "Ask the user to let you see one email hidden by their privacy filter (e.g. a sign-in code they want you to use). They approve with Face ID or their password; then you get it once. Say why in reason.",
+		func(ctx context.Context, h *rubiplugin.Host, in revealIn) (any, error) {
+			return x.requestReveal(ctx, h, in)
+		})
+	p.OnExecute(kindPrivate, func(ctx context.Context, h *rubiplugin.Host, _ string, payload json.RawMessage) (any, error) {
+		var in revealIn
+		if err := json.Unmarshal(payload, &in); err != nil {
+			return nil, err
+		}
+		return x.reveal(h, in)
+	})
 	p.OnExecute(kindRead, func(ctx context.Context, h *rubiplugin.Host, _ string, payload json.RawMessage) (any, error) {
 		var r readPayload
 		if err := json.Unmarshal(payload, &r); err != nil {
@@ -178,6 +193,20 @@ func (x *integration) read(ctx context.Context, h host, r readPayload, summary s
 }
 
 func (x *integration) doRead(h host, r readPayload) (any, error) {
+	switch {
+	case r.Op == "search" && r.Search != nil:
+		if err := x.folderAllowed(h, r.Search.Mailbox); err != nil {
+			return nil, err
+		}
+	case r.Op == "search":
+		if err := x.folderAllowed(h, ""); err != nil {
+			return nil, err
+		}
+	case r.Op == "read" && r.Read != nil:
+		if err := x.folderAllowed(h, r.Read.Mailbox); err != nil {
+			return nil, err
+		}
+	}
 	c, _, err := session(h)
 	if err != nil {
 		return nil, err
@@ -186,14 +215,53 @@ func (x *integration) doRead(h host, r readPayload) (any, error) {
 	switch r.Op {
 	case "list":
 		boxes, err := listMailboxes(c)
-		return map[string]any{"mailboxes": boxes}, err
+		if err != nil {
+			return nil, err
+		}
+		open := []mailbox{}
+		var closed []string
+		for _, b := range boxes {
+			if x.folderAllowed(h, b.Name) == nil {
+				open = append(open, b)
+			} else {
+				closed = append(closed, b.Name)
+			}
+		}
+		out := map[string]any{"mailboxes": open}
+		if len(closed) > 0 && foldersOf(h).Requests == "ask" {
+			out["closed"] = closed
+			out["note"] = "Closed folders: ask with icloud_mail_folder_access(mailbox, reason) if you need one."
+		}
+		return out, nil
 	case "search":
 		q := searchQuery{}
 		if r.Search != nil {
 			q = *r.Search
 		}
 		msgs, err := search(c, q)
-		return map[string]any{"messages": msgs}, err
+		if err != nil {
+			return nil, err
+		}
+		p := privacyOf(h)
+		// A query on content must not reveal anything about private mail, not even that it matched.
+		byContent := strings.TrimSpace(q.Text) != "" || strings.TrimSpace(q.Subject) != ""
+		out := make([]summary, 0, len(msgs))
+		hiddenCount := 0
+		for _, m := range msgs {
+			if hidden, _ := p.hidden(m.From, m.Subject, ""); hidden {
+				hiddenCount++
+				if byContent {
+					continue
+				}
+				m = summary{UID: m.UID, Date: m.Date, From: senderOnly(m.From), Seen: m.Seen, Private: true}
+			}
+			out = append(out, m)
+		}
+		res := map[string]any{"messages": out}
+		if hiddenCount > 0 && !byContent {
+			res["note"] = privateNote
+		}
+		return res, nil
 	case "read":
 		if r.Read == nil {
 			return nil, errors.New("missing uid")
@@ -205,6 +273,10 @@ func (x *integration) doRead(h host, r readPayload) (any, error) {
 		m, err := parseMessage(raw, r.Read.MaxChars)
 		if err != nil {
 			return nil, err
+		}
+		if hidden, _ := privacyOf(h).hidden(m.From, m.Subject, m.Text); hidden {
+			return map[string]any{"status": "private", "uid": r.Read.UID, "mailbox": orInbox(r.Read.Mailbox),
+				"from": senderOnly(m.From), "date": m.Date, "message": privateNote}, nil
 		}
 		m.UID, m.Mailbox = r.Read.UID, orInbox(r.Read.Mailbox)
 		return map[string]any{"message": m}, nil
@@ -227,11 +299,16 @@ func payloadOf(m *composed, days int) mailPayload {
 }
 
 func (x *integration) draft(ctx context.Context, h host, d draft) (any, error) {
+	if d.ReplyToUID != 0 {
+		if err := x.folderAllowed(h, d.ReplyBox); err != nil {
+			return nil, err
+		}
+	}
 	c, s, err := session(h)
 	if err != nil {
 		return nil, err
 	}
-	msg, err := composeReply(c, s, d)
+	msg, err := composeReply(c, s, privacyOf(h), d)
 	logout(c)
 	if err != nil {
 		return nil, err
@@ -258,11 +335,16 @@ func (x *integration) saveDraft(h host, m mailPayload) (any, error) {
 }
 
 func (x *integration) requestSend(ctx context.Context, h host, in sendIn) (any, error) {
+	if in.ReplyToUID != 0 {
+		if err := x.folderAllowed(h, in.ReplyBox); err != nil {
+			return nil, err
+		}
+	}
 	c, s, err := session(h)
 	if err != nil {
 		return nil, err
 	}
-	msg, err := composeReply(c, s, in.draft)
+	msg, err := composeReply(c, s, privacyOf(h), in.draft)
 	logout(c)
 	if err != nil {
 		return nil, err
@@ -287,17 +369,24 @@ func orInbox(b string) string {
 	return b
 }
 
+const privateNote = "Hidden by the user's privacy filter (for example sign-in codes). Only the sender is shown. " +
+	"If the user needs you to see one, call icloud_mail_reveal(uid, reason): they approve with Face ID or their " +
+	"password, and you get it once. Don't ask for codes or passwords otherwise."
+
 // composeReply builds a message, adding threading headers when it answers an existing one.
-func composeReply(c *imapclient.Client, s Settings, d draft) (*composed, error) {
+func composeReply(c *imapclient.Client, s Settings, p privacyConfig, d draft) (*composed, error) {
 	var inReplyTo, refs string
 	if d.ReplyToUID != 0 {
 		raw, err := fetchRaw(c, d.ReplyBox, d.ReplyToUID)
 		if err != nil {
 			return nil, err
 		}
-		orig, err := parseMessage(raw, 1)
+		orig, err := parseMessage(raw, 20000)
 		if err != nil {
 			return nil, err
+		}
+		if hidden, _ := p.hidden(orig.From, orig.Subject, orig.Text); hidden {
+			return nil, errors.New("that email is private (the user's privacy filter); reply without reply_to_uid, or ask to reveal it first")
 		}
 		inReplyTo, refs = orig.MessageID, orig.References
 		if strings.TrimSpace(d.Subject) == "" {
@@ -353,4 +442,61 @@ func randomID(prefix string) string {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b)
 	return prefix + base64.RawURLEncoding.EncodeToString(b)
+}
+
+type revealIn struct {
+	UID     uint32 `json:"uid"`
+	Mailbox string `json:"mailbox,omitempty" jsonschema:"folder, default INBOX"`
+	Reason  string `json:"reason" jsonschema:"why you need it, shown to the user"`
+}
+
+func (x *integration) requestReveal(ctx context.Context, h host, in revealIn) (any, error) {
+	if strings.TrimSpace(in.Reason) == "" {
+		return nil, errors.New("say why you need this email (reason)")
+	}
+	if err := x.folderAllowed(h, in.Mailbox); err != nil {
+		return nil, err
+	}
+	c, _, err := session(h)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := fetchRaw(c, in.Mailbox, in.UID)
+	logout(c)
+	if err != nil {
+		return nil, err
+	}
+	m, err := parseMessage(raw, 20000)
+	if err != nil {
+		return nil, err
+	}
+	hidden, why := privacyOf(h).hidden(m.From, m.Subject, m.Text)
+	if !hidden {
+		return map[string]any{"status": "not_private", "message": "This email isn't hidden; read it with icloud_mail_read."}, nil
+	}
+	return h.Submit(ctx, rubiplugin.Request{Kind: kindPrivate,
+		Summary: "Show a private email from " + senderOnly(m.From) + " to your agent",
+		Preview: map[string]any{"from": m.From, "subject": m.Subject, "date": m.Date, "hidden_because": why,
+			"reason": strings.TrimSpace(in.Reason)},
+		Options: []rubiplugin.Option{{Key: "show", Label: "Show it to my agent"}},
+		Payload: revealIn{UID: in.UID, Mailbox: in.Mailbox, Reason: in.Reason}})
+}
+
+func (x *integration) reveal(h host, in revealIn) (any, error) {
+	c, _, err := session(h)
+	if err != nil {
+		return nil, err
+	}
+	defer logout(c)
+	raw, err := fetchRaw(c, in.Mailbox, in.UID)
+	if err != nil {
+		return nil, err
+	}
+	m, err := parseMessage(raw, 0)
+	if err != nil {
+		return nil, err
+	}
+	m.UID, m.Mailbox = in.UID, orInbox(in.Mailbox)
+	h.Audit("private_revealed", map[string]any{"uid": in.UID, "mailbox": m.Mailbox})
+	return map[string]any{"message": m, "note": "Shown once with the user's approval. Use it only for what you asked; don't repeat codes or store them."}, nil
 }

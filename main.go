@@ -12,9 +12,12 @@ import (
 const ID = "icloud-mail"
 
 const (
-	kindRead  = ID + ".read"
-	kindDraft = ID + ".draft"
-	kindSend  = ID + ".send"
+	kindRead    = ID + ".read"
+	kindDraft   = ID + ".draft"
+	kindSend    = ID + ".send"
+	kindWatch   = ID + ".watch"
+	kindPrivate = ID + ".private"
+	kindFolder  = ID + ".folder"
 )
 
 // PublisherKey is the Rubi-Project plugin signing key (public half).
@@ -36,7 +39,7 @@ func manifest() rubiplugin.Manifest {
 		Publisher: rubiplugin.Publisher{Name: "Rubi-Project", Key: PublisherKey,
 			URL: "https://github.com/Deikus-LXXVII/rubi-icloud-mail"},
 		Source:  "https://github.com/Deikus-LXXVII/rubi-icloud-mail",
-		MinRubi: "v0.3.0",
+		MinRubi: "v0.4.0",
 		Entry:   "icloud-mail",
 		Fields: []rubiplugin.Field{
 			{Key: "address", Label: "iCloud email address", Type: "email", Placeholder: "name@icloud.com", Required: true,
@@ -53,8 +56,23 @@ func manifest() rubiplugin.Manifest {
 			{Kind: kindRead, Title: "Read and search mail", DefaultLevel: rubiplugin.None},
 			{Kind: kindDraft, Title: "Save drafts", DefaultLevel: rubiplugin.None},
 			{Kind: kindSend, Title: "Send email", DefaultLevel: rubiplugin.Strong, Options: sendOptions},
+			{Kind: kindWatch, Title: "Watch for new mail (wakes your agent)", DefaultLevel: rubiplugin.None},
+			{Kind: kindPrivate, Title: "Show a private email", DefaultLevel: rubiplugin.Strong, Locked: true,
+				Options: []rubiplugin.Option{{Key: "show", Label: "Show it to my agent"}}},
+			{Kind: kindFolder, Title: "Open a closed folder for a while", DefaultLevel: rubiplugin.Strong, Locked: true},
 		},
-		Events: []rubiplugin.EventType{{Type: "reply", Untrusted: []string{"reply.from", "reply.subject"}}},
+		Events: []rubiplugin.EventType{
+			{Type: "reply", Untrusted: []string{"reply.from", "reply.subject"}},
+			{Type: "watch", Untrusted: []string{"message.from", "message.subject", "message.snippet"}},
+		},
+		Config: append(append([]rubiplugin.ConfigField{}, folderSettings...),
+			rubiplugin.ConfigField{Key: "hide_codes", Label: "Hide sign-in codes and password emails", Type: "bool", Default: true,
+				Help: "Verification codes, one-time passwords, password resets and sign-in alerts (built-in list, English and Russian)."},
+			rubiplugin.ConfigField{Key: "hidden_senders", Label: "Hidden senders", Type: "list", Default: []string{},
+				Help: "Email addresses or domains, one per line (e.g. bank.com). Your agent can't see mail from them."},
+			rubiplugin.ConfigField{Key: "hidden_keywords", Label: "Hidden words", Type: "list", Default: []string{},
+				Help: "Words or phrases, one per line. Your agent can't see mail whose subject or text contains one."},
+		),
 		Egress: []string{"imap.mail.me.com:993", "smtp.mail.me.com:587"},
 	}
 }

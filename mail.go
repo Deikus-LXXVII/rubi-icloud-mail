@@ -190,6 +190,7 @@ type summary struct {
 	To      string `json:"to,omitempty"`
 	Subject string `json:"subject"`
 	Seen    bool   `json:"seen"`
+	Private bool   `json:"private,omitempty"` // hidden by the user's privacy filter: only the sender is shown
 }
 
 func search(c *imapclient.Client, q searchQuery) ([]summary, error) {

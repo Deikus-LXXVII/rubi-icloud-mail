@@ -39,6 +39,8 @@ type cursor struct {
 
 type state struct {
 	Tracked []*tracked        `json:"tracked"`
+	Watches []*watch          `json:"watches,omitempty"`
+	Grants  []*grant          `json:"grants,omitempty"` // temporary folder access the user approved
 	Cursors map[string]cursor `json:"cursors"`
 }
 
@@ -61,6 +63,20 @@ func (s *state) prune(now time.Time) {
 		}
 	}
 	s.Tracked = kept
+	var ws []*watch
+	for _, w := range s.Watches {
+		if w.active(now) || now.Before(w.Expires.Add(7*24*time.Hour)) && !w.Stopped {
+			ws = append(ws, w)
+		}
+	}
+	s.Watches = ws
+	var gs []*grant
+	for _, g := range s.Grants {
+		if now.Before(g.Until) {
+			gs = append(gs, g)
+		}
+	}
+	s.Grants = gs
 }
 
 func (x *integration) loadState(h host) (*state, error) {
@@ -162,8 +178,12 @@ func (x *integration) poll(h host) error {
 	}
 	now := time.Now()
 	active := st.active(now)
-	if len(active) == 0 {
-		return nil
+	watches := st.activeWatches(now)
+	if len(active) == 0 && len(watches) == 0 {
+		return nil // nothing to follow: iCloud isn't contacted
+	}
+	if x.folderAllowed(h, "INBOX") != nil {
+		return nil // the user closed INBOX to the agent: no replies or matches from it
 	}
 	c, s, err := session(h)
 	if err != nil {
@@ -175,6 +195,16 @@ func (x *integration) poll(h host) error {
 		if t.SentAt.Before(oldest) {
 			oldest = t.SentAt
 		}
+	}
+	for _, w := range watches {
+		if w.Created.Before(oldest) {
+			oldest = w.Created
+		}
+	}
+	p := privacyOf(h)
+	needText := false
+	for _, w := range watches {
+		needText = needText || len(w.Keywords) > 0
 	}
 	box := "INBOX"
 	cur := st.Cursors[box]
@@ -189,7 +219,10 @@ func (x *integration) poll(h host) error {
 	if err != nil {
 		return err
 	}
+	texts := 0
 	for _, hd := range headers {
+		private, _ := p.hidden(hd.from, hd.subject, "")
+		x.checkWatches(h, c, box, st, hd, private, needText, &texts, now)
 		t, how := match(hd, st.active(now), s.Address)
 		if t == nil {
 			continue
@@ -202,10 +235,15 @@ func (x *integration) poll(h host) error {
 			continue
 		}
 		t.Replies = append(t.Replies, id)
+		reply := map[string]any{"mailbox": box, "uid": hd.uid, "from": hd.from, "subject": hd.subject, "date": hd.date, "match": how}
+		if private {
+			reply = map[string]any{"mailbox": box, "uid": hd.uid, "from": senderOnly(hd.from), "private": true,
+				"date": hd.date, "match": how, "note": privateNote}
+		}
 		_, _ = h.Emit("reply", map[string]any{
 			"tracking_id": t.ID,
 			"original":    map[string]any{"subject": t.Subject, "message_id": "<" + t.MessageID + ">", "sent_at": t.SentAt},
-			"reply":       map[string]any{"mailbox": box, "uid": hd.uid, "from": hd.from, "subject": hd.subject, "date": hd.date, "match": how},
+			"reply":       reply,
 		})
 		h.Audit("reply_found", map[string]any{"tracking_id": t.ID, "match": how})
 	}
@@ -346,4 +384,52 @@ func lowerAll(list []string) []string {
 		out[i] = strings.ToLower(v)
 	}
 	return out
+}
+
+// maxTextsPerPoll bounds how many bodies a poll fetches for word watches.
+const maxTextsPerPoll = 30
+
+// checkWatches emits a watch event for each watch a new message matches.
+func (x *integration) checkWatches(h host, c *imapclient.Client, box string, st *state, hd header, private, needText bool, texts *int, now time.Time) {
+	var text string
+	fetched := false
+	for _, w := range st.activeWatches(now) {
+		if hd.date.Before(w.Created.Add(-2*time.Minute)) && !hd.date.IsZero() {
+			continue // only mail that arrived after the watch was set
+		}
+		if needText && len(w.Keywords) > 0 && !private && !fetched && *texts < maxTextsPerPoll {
+			fetched = true
+			*texts++
+			if raw, err := fetchRaw(c, box, hd.uid); err == nil {
+				if m, err := parseMessage(raw, 20000); err == nil {
+					text = m.Text
+					if hidden, _ := privacyOf(h).hidden(hd.from, hd.subject, text); hidden {
+						private, text = true, ""
+					}
+				}
+			}
+		}
+		if !w.matches(hd.from, hd.subject, text, private) {
+			continue
+		}
+		w.Hits++
+		w.LastHit = now.UTC()
+		msg := map[string]any{"mailbox": box, "uid": hd.uid, "from": hd.from, "subject": hd.subject, "date": hd.date}
+		if private {
+			msg = map[string]any{"mailbox": box, "uid": hd.uid, "from": senderOnly(hd.from), "date": hd.date,
+				"private": true, "note": privateNote}
+		} else if text != "" {
+			snippet := strings.Join(strings.Fields(text), " ")
+			if len([]rune(snippet)) > 300 {
+				snippet = string([]rune(snippet)[:300]) + "…"
+			}
+			msg["snippet"] = snippet
+		}
+		_, _ = h.EmitTo(w.Agent, "watch", map[string]any{
+			"watch":   map[string]any{"id": w.ID, "name": w.Name, "note": w.Note, "hits": w.Hits},
+			"message": msg,
+			"hint":    "Read it with icloud_mail_read(uid) if you need more. Stop the watch with icloud_mail_unwatch when it's done.",
+		})
+		h.Audit("watch_matched", map[string]any{"watch_id": w.ID, "private": private})
+	}
 }

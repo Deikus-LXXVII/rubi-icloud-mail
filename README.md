@@ -6,7 +6,12 @@ your approval:
 - read and search mail (never marks anything as read);
 - save drafts to your iCloud Drafts folder;
 - send email only after you approve it in the Rubi panel (Face ID by default);
-- optionally get notified when someone replies to an email you sent.
+- optionally get notified when someone replies to an email you sent;
+- let your agent watch for new mail from given senders or with given words (say, delivery updates for an
+  order) and react to each one;
+- keep private mail private: sign-in codes, password resets and anything you choose stay hidden from your
+  agent unless you approve showing one with Face ID;
+- choose which folders your agent can see, and whether it may ask for the others.
 
 ## Install
 
@@ -25,9 +30,24 @@ the password encrypted; your agent never sees it.
 | Save drafts | no approval by default |
 | Send email | Face ID / password by default |
 | Connects to | `imap.mail.me.com:993`, `smtp.mail.me.com:587` |
-| Can notify your agent about | replies to tracked emails |
+| Watch for new mail (wakes your agent) | no approval by default |
+| Show a private email | Face ID / password, always |
+| Open a closed folder for a while | Face ID / password, always |
+| Can notify your agent about | replies to tracked emails, mail matching its watches |
 
-You can change the approval levels in Rubi's settings.
+You can change the approval levels in Rubi's settings, except the two marked "always".
+
+## Your settings
+
+Right after connecting, and later under *Settings* > *iCloud Mail* > *Settings* in the Rubi panel:
+
+- **Folders your agent can see:** all, or only the ones you check; and whether it may ask for the others.
+- **Hide sign-in codes and password emails:** on by default (verification codes, one-time passwords,
+  password resets, sign-in alerts; English and Russian).
+- **Hidden senders** and **hidden words:** anything else you want to keep from your agent.
+
+Only you can change these, with Face ID or your password; your agent can't see or change them. Hidden mail
+shows up to your agent only as "a private email from <sender>".
 
 ## Development
 
