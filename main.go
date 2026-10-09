@@ -14,7 +14,7 @@ var provider = mailkit.Provider{
 	ID:          "icloud-mail",
 	Name:        "iCloud Mail",
 	Version:     "v2.0.0",
-	MinRubi:     "v0.6.0",
+	MinRubi:     "v0.6.1",
 	Description: "Read, search and draft iCloud email; send after your approval; get notified about replies. Several accounts.",
 	Needs: "Your iCloud email address and an app-specific password created at account.apple.com " +
 		"(Sign-In and Security > App-Specific Passwords). Apple offers no other way for apps to access iCloud Mail.",
