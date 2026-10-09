@@ -36,6 +36,7 @@ To add another account, open *Settings* in the Rubi panel and press *Add account
 | Connects to | `imap.mail.me.com:993`, `smtp.mail.me.com:587` |
 | Watch for new mail (wakes your agent) | no approval by default |
 | Show a private email | passkey / password, always |
+| Give an attachment to your agent (when set to "may ask") | passkey / password, always |
 | Open a closed folder for a while | passkey / password, always |
 | Can notify your agent about | replies to tracked emails, mail matching its watches |
 
@@ -52,6 +53,9 @@ Right after connecting, and later in the Rubi panel under *Settings*, at each ac
 - **Hide sign-in and security alerts:** off by default, so your agent can warn you about new sign-ins or
   suspicious activity. (An alert that contains a code stays hidden by the first switch.)
 - **Hidden senders** and **hidden words:** anything else you want to keep from your agent.
+
+Attachments: per mailbox, choose whether your agent can open the documents and photos attached to emails,
+may ask you first (the default), or can't open them at all and sees only how many there are.
 
 The privacy switches apply to all your iCloud Mail accounts. Only you can change these settings, with your
 passkey or password; your agent can't see or change them. Hidden mail shows up to your agent only as
