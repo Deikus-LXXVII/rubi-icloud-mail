@@ -54,6 +54,10 @@ Right after connecting, and later in the Rubi panel under *Settings*, at each ac
   suspicious activity. (An alert that contains a code stays hidden by the first switch.)
 - **Hidden senders** and **hidden words:** anything else you want to keep from your agent.
 
+Formatted emails: your agent reads emails as text, and can ask for the formatted version when it needs a
+button the text doesn't show (an "Unsubscribe" link, say). It gets the links and a copy of the email that
+loads nothing from the internet, so opening it doesn't tell the sender you read it.
+
 Attachments: per mailbox, choose whether your agent can open the documents and photos attached to emails,
 may ask you first (the default), or can't open them at all and sees only how many there are.
 
