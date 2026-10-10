@@ -2,7 +2,7 @@ module github.com/Deikus-LXXVII/rubi-icloud-mail
 
 go 1.26.4
 
-require github.com/Deikus-LXXVII/rubi-mailkit v0.2.1
+require github.com/Deikus-LXXVII/rubi-mailkit v0.3.0
 
 require (
 	github.com/Deikus-LXXVII/rubi v0.9.3 // indirect

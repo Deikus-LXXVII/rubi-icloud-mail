@@ -1,7 +1,7 @@
 github.com/Deikus-LXXVII/rubi v0.9.3 h1:UJ0qP+I7V/PzY2eAnZGIuArNq0M1l+gfbJ5BATPB0xQ=
 github.com/Deikus-LXXVII/rubi v0.9.3/go.mod h1:T/ueWF1gaN5RLJn9yTAHv8HcSs+qCk/Zz/x7DE0l+Qk=
-github.com/Deikus-LXXVII/rubi-mailkit v0.2.1 h1:kIDvcfZW5hxl7bHNXjbI4qQQ12JdZERIMfR86RIsQXA=
-github.com/Deikus-LXXVII/rubi-mailkit v0.2.1/go.mod h1:hJaJ8D2EGvvRtLP3cbjFEEdVU35z+Y7owc/6Gm+XXRE=
+github.com/Deikus-LXXVII/rubi-mailkit v0.3.0 h1:Xum8CxAq2Uu4yw5Qp7YOZddAyOKvs7lF7FgCkbIkpuQ=
+github.com/Deikus-LXXVII/rubi-mailkit v0.3.0/go.mod h1:hJaJ8D2EGvvRtLP3cbjFEEdVU35z+Y7owc/6Gm+XXRE=
 github.com/emersion/go-imap/v2 v2.0.0-beta.8 h1:5IXZK1E33DyeP526320J3RS7eFlCYGFgtbrfapqDPug=
 github.com/emersion/go-imap/v2 v2.0.0-beta.8/go.mod h1:dhoFe2Q0PwLrMD7oZw8ODuaD0vLYPe5uj2wcOMnvh48=
 github.com/emersion/go-message v0.18.2 h1:rl55SQdjd9oJcIoQNhubD2Acs1E6IzlZISRTK7x/Lpg=

@@ -7,6 +7,13 @@ your approval:
 - save drafts to your iCloud Drafts folder;
 - send email only after you approve it in the Rubi panel (with your passkey by default);
 - optionally get notified when someone replies to an email you sent;
+- search with Gmail-style queries (`from:`, `subject:`, `is:unread`, `larger:`, `newer_than:`, `OR`, `-`…)
+  across your folders, with results grouped into conversations, and read a whole conversation at once;
+- organize: archive, trash, junk, move, read and flag marks, create and rename folders; every change can
+  be undone for 7 days, and deleting a folder asks you first (only empty folders can be deleted);
+- forward emails with their attachments, attach files when sending, add a formatted (HTML) version, and
+  show an email's source (all headers);
+- drafts: list, edit, delete, and send a saved draft (also one you wrote) after your approval;
 - let your agent watch for new mail from given senders or with given words (say, delivery updates for an
   order) and react to each one;
 - keep private mail private: sign-in codes, password resets and anything you choose stay hidden from your
@@ -33,6 +40,9 @@ To add another account, open *Settings* in the Rubi panel and press *Add account
 | Read and search mail | no approval by default |
 | Save drafts | no approval by default |
 | Send email | passkey / password by default |
+| Organize mail (archive, trash, spam, move, marks; can be undone) | no approval by default |
+| Create and rename folders | no approval by default |
+| Delete a folder | passkey / password by default |
 | Connects to | `imap.mail.me.com:993`, `smtp.mail.me.com:587` |
 | Watch for new mail (wakes your agent) | no approval by default |
 | Show a private email | passkey / password, always |
