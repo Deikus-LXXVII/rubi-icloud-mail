@@ -14,7 +14,7 @@ var provider = mailkit.Provider{
 	ID:          "icloud-mail",
 	Name:        "iCloud Mail",
 	Version:     "v2.0.0",
-	MinRubi:     "v0.6.1",
+	MinRubi:     "v0.10.0",
 	Description: "Read, search and draft iCloud email; send after your approval; get notified about replies. Several accounts.",
 	Needs: "Your iCloud email address and an app-specific password created at account.apple.com " +
 		"(Sign-In and Security > App-Specific Passwords). Apple offers no other way for apps to access iCloud Mail.",
@@ -30,12 +30,13 @@ var provider = mailkit.Provider{
 	PasswordURL:  "https://account.apple.com/account/manage",
 	PasswordLink: "Open account.apple.com",
 
-	IMAPAddr:   "imap.mail.me.com:993",
-	SMTPAddr:   "smtp.mail.me.com:587",
-	Drafts:     "Drafts",
-	Sent:       "Sent Messages",
-	MailDomain: "icloud.com",
-	AuthError:  "iCloud rejected the login. Check that you used your @icloud.com address and a current app-specific password",
+	IMAPAddr:    "imap.mail.me.com:993",
+	SMTPAddr:    "smtp.mail.me.com:587",
+	Drafts:      "Drafts",
+	Sent:        "Sent Messages",
+	AuthServIDs: []string{"icloud.com"}, // whose sender checks are trusted
+	MailDomain:  "icloud.com",
+	AuthError:   "iCloud rejected the login. Check that you used your @icloud.com address and a current app-specific password",
 }
 
 func main() { mailkit.Main(provider) }

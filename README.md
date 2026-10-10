@@ -14,6 +14,14 @@ your approval:
 - forward emails with their attachments, attach files when sending, add a formatted (HTML) version, and
   show an email's source (all headers);
 - drafts: list, edit, delete, and send a saved draft (also one you wrote) after your approval;
+- act on everything a search finds at once (one approval, one undo), snooze mail until a time;
+- an approved email waits a moment so you can still cancel it (Undo send), or goes out later; a warning
+  before the first email to a new domain;
+- unsubscribe from mailing lists the sender's own way, answer calendar invitations, rules for new mail
+  (move, label, mark, tell your agent) that you approve;
+- reply all, quote the original, your signature;
+- phishing signs with every email: sender checks (SPF, DKIM, DMARC), look-alike domains, misleading links;
+- new mail reaches your agent at once (IMAP IDLE);
 - let your agent watch for new mail from given senders or with given words (say, delivery updates for an
   order) and react to each one;
 - keep private mail private: sign-in codes, password resets and anything you choose stay hidden from your
@@ -40,10 +48,13 @@ To add another account, open *Settings* in the Rubi panel and press *Add account
 | Read and search mail | no approval by default |
 | Save drafts | no approval by default |
 | Send email | passkey / password by default |
+| Organize many emails at once | a button in the chat by default |
+| Add or remove rules for new mail | passkey / password by default |
+| Unsubscribe from a mailing list | a button in the chat by default |
 | Organize mail (archive, trash, spam, move, marks; can be undone) | no approval by default |
 | Create and rename folders | no approval by default |
 | Delete a folder | passkey / password by default |
-| Connects to | `imap.mail.me.com:993`, `smtp.mail.me.com:587` |
+| Connects to | `imap.mail.me.com:993`, `smtp.mail.me.com:587`; unsubscribe links you approve |
 | Watch for new mail (wakes your agent) | no approval by default |
 | Show a private email | passkey / password, always |
 | Give an attachment to your agent (when set to "may ask") | passkey / password, always |
